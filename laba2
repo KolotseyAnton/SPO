@@ -1,85 +1,49 @@
-#include "stdafx.h"
-#include <winsock2.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include <stdio.h>
- #pragma comment(lib, "ws2_32.lib") 
-int main(void)
+#include <stdlib.h>
+#include <unistd.h>
+#include <netdb.h>
+#include <string.h>
+#include "../spolks_lib/sockets.c"
+
+#define bufSize 100
+
+int main(int argc, char *argv[])
 {
-    WORD sockVer;
-    WSADATA wsaData;
-    int retVal;
- 
-    sockVer = MAKEWORD(2,2);
- 
-    WSAStartup(sockVer, &wsaData);
- 
-    //Создаем сокет
-    SOCKET servSock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
- 
-    if(servSock == INVALID_SOCKET)
-    {
-        printf("Unable to create socket\n");
-        WSACleanup();
-        return SOCKET_ERROR;
+    char hostName[] = "localhost";
+    unsigned int port = 5734;
+    struct sockaddr_in sin;
+    int socketDescriptor;
+
+    if ((socketDescriptor =
+         createTcpServerSocket(hostName, port, &sin, 5)) == -1) {
+        printf("Creation socket error\n");
+        return 1;
     }
-	SOCKADDR_IN sin;
-    sin.sin_family = PF_INET;
-    sin.sin_port = htons(1111);
-    sin.sin_addr.s_addr = INADDR_ANY;
- 
-    retVal = bind(servSock, (LPSOCKADDR)&sin, sizeof(sin));
-    if(retVal == SOCKET_ERROR)
-    {
-        printf("Unable to bind\n");
-        WSACleanup();
-        return SOCKET_ERROR;
+
+    char buf[bufSize];
+
+    while (1) {
+        struct sockaddr_in remote;
+        socklen_t rlen = sizeof(remote);
+        int remoteSocketDescriptor =
+            accept(socketDescriptor, (struct sockaddr *) &remote, &rlen);
+
+        while (1) {
+            int numberOfBytesRead =
+                recv(remoteSocketDescriptor, buf, bufSize, 0);
+            if (numberOfBytesRead <= 0)
+                break;
+            else {
+                printf("%.*s", numberOfBytesRead, buf);
+                fflush(stdout);
+                send(remoteSocketDescriptor, buf, numberOfBytesRead, 0);
+            }
+        }
+        close(remoteSocketDescriptor);
     }
- 
-    //Пытаемся начать слушать сокет
-    retVal = listen(servSock, 10);
-    if(retVal == SOCKET_ERROR)
-    {
-        printf("Unable to listen\n");
-        WSACleanup();
-        return SOCKET_ERROR;
-    }
-    //Ждем клиента
-    SOCKET clientSock;
- 
-    clientSock = accept(servSock, NULL, NULL);
- 
-    if(clientSock == INVALID_SOCKET)
-    {
-        printf("Unable to accept\n");
-        WSACleanup();
-        return SOCKET_ERROR;
-    }
- 
-    char szReq[8]; 
-    retVal = recv(clientSock, szReq, 8, 0);
- 
-    if(retVal == SOCKET_ERROR)
-    {
-        printf("Unable to recv\n");
-        return SOCKET_ERROR;
-    }
- 
-    printf("Got the request from client\n%s\n",szReq);
- 
-    char *szResp = "Response";
- 
-    printf("Sending response from server\n");
-    retVal = send(clientSock, szResp, strlen(szResp), 0);
- 
-    if(retVal == SOCKET_ERROR)
-    {
-        printf("Unable to send\n");
-        return SOCKET_ERROR;
-    }
- 
-    //Закрываем сокет
-    closesocket(clientSock);
-    closesocket(servSock);
- 
-    WSACleanup();
+
     return 0;
 }
